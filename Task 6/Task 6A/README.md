@@ -71,16 +71,19 @@ The MAE paper is available at:
 
 
 ## Visualization
-### **Loss Curve for MAE**
+### **Loss Curve for MAE**&#x20;
 ![MAE](./Epoch%20vs%20Training%20&%20validation%20Loss%20MAE.png)
 
-### **Reconstructed Images from MAE**
+### **Reconstructed Images from MAE**&#x20;
 ![MAE](./Reconstructed%20images.png)
 
 ### **Fine-tuning for Classification Phase Visualizations**
-- **Loss and Accuracy Curve** ![MAE](./Epoch%20vs%20Loss%20&%20Accuracy.png)
-- **Confusion Matrix** ![MAE](./cf%20matrix.png)
-- **ROC Curve** ![MAE](./ROC%20curve.png)
+- **Loss and Accuracy Curve**&#x20; 
+![MAE](./Epoch%20vs%20Loss%20&%20Accuracy.png)
+- **Confusion Matrix**&#x20;
+![MAE](./cf%20matrix.png)
+- **ROC Curve**&#x20;
+![MAE](./ROC%20curve.png)
 
 
 ## Conclusion
