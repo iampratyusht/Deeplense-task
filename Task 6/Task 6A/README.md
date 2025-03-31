@@ -80,8 +80,10 @@ The MAE paper is available at:
 ### **Fine-tuning for Classification Phase Visualizations**
 - **Loss and Accuracy Curve**&#x20; 
 ![MAE](./Epoch%20vs%20Loss%20&%20Accuracy.png)
+
 - **Confusion Matrix**&#x20;
 ![MAE](./cf%20matrix.png)
+
 - **ROC Curve**&#x20;
 ![MAE](./ROC%20curve.png)
 
