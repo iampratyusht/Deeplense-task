@@ -29,8 +29,8 @@ The implementation is based on **PyTorch** and follows these key steps:
 ## Performance Metrics
 After fine-tuning, the model achieves the following results on the validation set:
 - **MSE**: `0.0003`
-- **SSIM**: `0.9503`
-- **PSNR**: `82.3073 dB`
+- **SSIM**: `0.9549`
+- **PSNR**: `35.8112 dB`
 ![Metrics Plot](./Epoch%20vs%20Loss,%20SSIM%20and%20PSNR.png)
 
 ## Results & Discussion
