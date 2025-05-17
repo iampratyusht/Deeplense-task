@@ -28,7 +28,7 @@ class CustomDataset(Dataset):
         # Handle different modes
         if self.pretrain:
             # Load all .npy files recursively for self-supervised learning
-            image = Path(self.data_path/config["pretraining_label"])
+            image_path = Path(self.data_path / config["pretraining_label"])
             self.file_paths = list(image_path.rglob("*.npy"))
 
         elif self.downstream == "classifier":
@@ -58,7 +58,7 @@ class CustomDataset(Dataset):
                 img = np.load(file_path, allow_pickle=True)[0]
             else:
                 img = np.load(file_path)
-            
+
             if self.transform:
                 img = self.transform(img)
             return img
@@ -67,6 +67,9 @@ class CustomDataset(Dataset):
             img = np.load(file_path)
             if self.transform:
                 img = self.transform(img)
+
+            if config["mode"] == "test":
+                return img
 
             label = self.labels[idx]
             label_idx = self.class_to_idx[label]
@@ -79,9 +82,13 @@ class CustomDataset(Dataset):
 
             if self.transform:
                 LR = self.transform(LR)
-            if self.target_transform:
-                HR = self.target_transform(HR)
-            return LR, HR
+
+            if config["mode"] == "train":
+                if self.target_transform:
+                    HR = self.target_transform(HR)
+                return LR, HR
+            else:
+                return LR
 
         else:
             raise ValueError("Invalid data loading configuration.")
@@ -89,13 +96,14 @@ class CustomDataset(Dataset):
 def train_dataset(config):
     """
     Builds a dataset and dataloader pipeline using settings from config.
-    
+
     Returns:
         train_loader (DataLoader): Dataloader for training set.
-        test_loader (DataLoader): Dataloader for test set.
+        val_loader (DataLoader): Dataloader for validation set.
     """
     # Define appropriate transforms based on the task
     if config["pretrain"] or config["downstream"] == "classifier":
+        # Use ToTensor for image loading and float conversion
         transform = Compose([
             ToTensor(),  
             Lambda(lambda x: x.float())
@@ -103,6 +111,7 @@ def train_dataset(config):
         target_transform = None
 
     elif config["downstream"] == "super-resolution":
+        # Load LR and HR images for SR task
         transform = Compose([
             Lambda(lambda x: torch.from_numpy(x).float()),
             Resize((64, 64))  # Resize only LR images if needed
@@ -114,7 +123,7 @@ def train_dataset(config):
         transform = None
         target_transform = None
 
-    # Initialize dataset based on the training mode
+    # Initialize dataset
     dataset = CustomDataset(
         config=config,
         transform=transform,
@@ -123,8 +132,8 @@ def train_dataset(config):
 
     # Train/Test split
     train_size = int(config["split_ratio"] * len(dataset))
-    test_size = len(dataset) - train_size
-    train_set, test_set = random_split(dataset, [train_size, test_size])
+    val_size = len(dataset) - train_size
+    train_set, val_set = random_split(dataset, [train_size, val_size])
 
     # DataLoaders
     train_loader = DataLoader(train_set, 
@@ -132,7 +141,7 @@ def train_dataset(config):
                               shuffle=True,
                               num_workers=config['num_workers'],
                               pin_memory=True)
-    val_loader = DataLoader(test_set, 
+    val_loader = DataLoader(val_set, 
                              batch_size=config["batch_size"], 
                              shuffle=False,
                              num_workers=config['num_workers'],
@@ -141,5 +150,42 @@ def train_dataset(config):
     return train_loader, val_loader
 
 
+def test_dataset(config):
+    """
+    Builds a dataloader for test data using the provided configuration.
 
-        
+    Returns:
+        test_loader (DataLoader): Dataloader for test set.
+    """
+    # Define transforms based on mode
+    if config["pretrain"] or config["downstream"] == "classifier":
+        transform = Compose([
+            ToTensor(),  
+            Lambda(lambda x: x.float())
+        ])
+        target_transform = None
+
+    elif config["downstream"] == "super-resolution":
+        transform = Compose([
+            Lambda(lambda x: torch.from_numpy(x).float()),
+            Resize((64, 64))
+        ])
+        target_transform = None
+    else:
+        transform = None
+        target_transform = None
+
+    # Load test set using full dataset
+    dataset = CustomDataset(
+        config=config,
+        transform=transform,
+        target_transform=None
+    )
+
+    test_loader = DataLoader(dataset, 
+                              batch_size=config["batch_size"], 
+                              shuffle=False,
+                              num_workers=config['num_workers'],
+                              pin_memory=True)
+
+    return test_loader
