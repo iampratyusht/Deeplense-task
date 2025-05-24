@@ -1,0 +1,207 @@
+import torch
+import numpy as np
+from einops import rearrange, repeat
+from timm.models.vision_transformer import Block
+from torch.nn.init import trunc_normal_
+
+# Helper function: Generate random forward and backward indices for shuffling patches
+def random_indexes(size: int):
+    forward_indexes = np.arange(size)
+    np.random.shuffle(forward_indexes)
+    backward_indexes = np.argsort(forward_indexes)
+    return forward_indexes, backward_indexes
+
+# Helper function: Gather patches by index across a batch
+def take_indexes(sequences, indexes):
+    return torch.gather(sequences, 0, repeat(indexes, 't b -> t b c', c=sequences.shape[-1]))
+
+# Module for randomly shuffling and dropping image patches
+class PatchShuffle(torch.nn.Module):
+    def __init__(self, ratio):
+        """
+        Args:
+            ratio (float): Ratio of patches to be masked.
+        """
+        super().__init__()
+        self.ratio = ratio
+
+    def forward(self, patches: torch.Tensor):
+        T, B, C = patches.shape
+        remain_T = int(T * (1 - self.ratio))  # Number of visible patches after masking
+
+        # Generate random indexes for each sample in the batch
+        indexes = [random_indexes(T) for _ in range(B)]
+        forward_indexes = torch.as_tensor(np.stack([i[0] for i in indexes], axis=-1), dtype=torch.long).to(patches.device)
+        backward_indexes = torch.as_tensor(np.stack([i[1] for i in indexes], axis=-1), dtype=torch.long).to(patches.device)
+
+        # Shuffle and keep only visible patches
+        patches = take_indexes(patches, forward_indexes)
+        patches = patches[:remain_T]
+        return patches, forward_indexes, backward_indexes
+
+# MAE Encoder
+class MAE_Encoder(torch.nn.Module):
+    def __init__(self, image_size, patch_size, emb_dim, num_layer, num_head, mask_ratio):
+        """
+        Encoder module for MAE.
+        - Converts image to patches
+        - Randomly masks them
+        - Runs a ViT encoder on visible patches
+
+        Args:
+            image_size (int): Size of input image (assumes square).
+            patch_size (int): Size of each patch.
+            emb_dim (int): Embedding dimension.
+            num_layer (int): Number of transformer layers.
+            num_head (int): Number of attention heads.
+            mask_ratio (float): Fraction of patches to be masked.
+        """
+        super().__init__()
+        self.cls_token = torch.nn.Parameter(torch.zeros(1, 1, emb_dim))
+        self.pos_embedding = torch.nn.Parameter(torch.zeros((image_size // patch_size) ** 2, 1, emb_dim))
+        self.shuffle = PatchShuffle(mask_ratio)
+
+        # Patchify: Convert image into non-overlapping patches
+        self.patchify = torch.nn.Conv2d(1, emb_dim, patch_size, patch_size)
+
+        # Vision Transformer Encoder using timm
+        self.transformer = torch.nn.Sequential(*[Block(emb_dim, num_head) for _ in range(num_layer)])
+        self.layer_norm = torch.nn.LayerNorm(emb_dim)
+
+        self.init_weight()
+
+    def init_weight(self):
+        trunc_normal_(self.cls_token, std=.02)
+        trunc_normal_(self.pos_embedding, std=.02)
+
+    def forward(self, img):
+        # Convert image to patch embeddings
+        patches = self.patchify(img)  # (B, C, H, W)
+        patches = rearrange(patches, 'b c h w -> (h w) b c')  # (T, B, C)
+
+        # Add positional embedding
+        patches = patches + self.pos_embedding
+
+        # Shuffle and mask patches
+        patches, forward_indexes, backward_indexes = self.shuffle(patches)
+
+        # Prepend [CLS] token
+        patches = torch.cat([self.cls_token.expand(-1, patches.shape[1], -1), patches], dim=0)
+
+        # ViT expects (B, T, C)
+        patches = rearrange(patches, 't b c -> b t c')
+        features = self.transformer(patches)
+
+        features = self.layer_norm(features)
+        features = rearrange(features, 'b t c -> t b c')
+        return features, backward_indexes
+
+# MAE Decoder
+class MAE_Decoder(torch.nn.Module):
+    def __init__(self, image_size, patch_size, emb_dim, num_layer, num_head):
+        """
+        Decoder module for MAE.
+        - Restores full set of tokens using mask token
+        - Reconstructs image patches from the full token set
+        """
+        super().__init__()
+        self.mask_token = torch.nn.Parameter(torch.zeros(1, 1, emb_dim))
+        self.pos_embedding = torch.nn.Parameter(torch.zeros((image_size // patch_size) ** 2 + 1, 1, emb_dim))
+
+        # Transformer decoder using timm
+        self.transformer = torch.nn.Sequential(*[Block(emb_dim, num_head) for _ in range(num_layer)])
+
+        # Map tokens back to pixel space
+        self.head = torch.nn.Linear(emb_dim, patch_size ** 2)
+
+        # Patch -> Image reconstruction
+        self.patch2img = rearrange(
+            '(h w) b (c p1 p2) -> b c (h p1) (w p2)',
+            p1=patch_size, p2=patch_size,
+            h=image_size // patch_size
+        )
+
+        self.init_weight()
+
+    def init_weight(self):
+        trunc_normal_(self.mask_token, std=.02)
+        trunc_normal_(self.pos_embedding, std=.02)
+
+    def forward(self, features, backward_indexes):
+        T = features.shape[0]  # T_visible
+        B = features.shape[1]
+
+        # Recover original patch positions (add 1 for cls token offset)
+        backward_indexes = torch.cat([
+            torch.zeros(1, B).to(backward_indexes),  # cls token index
+            backward_indexes + 1
+        ], dim=0)
+
+        # Append mask tokens for masked patches
+        full_T = backward_indexes.shape[0]
+        features = torch.cat([
+            features,
+            self.mask_token.expand(full_T - T, B, -1)
+        ], dim=0)
+
+        # Reorder to original patch order
+        features = take_indexes(features, backward_indexes)
+        features = features + self.pos_embedding
+
+        # Transformer decoder
+        features = rearrange(features, 't b c -> b t c')
+        features = self.transformer(features)
+        features = rearrange(features, 'b t c -> t b c')[1:]  # Remove CLS
+
+        # Predict pixel patches
+        patches = self.head(features)
+
+        # Reconstruct binary mask for loss computation (optional)
+        mask = torch.zeros_like(patches)
+        mask[T-1:] = 1
+        mask = take_indexes(mask, backward_indexes[1:] - 1)
+
+        # Convert patches back to image
+        img = self.patch2img(patches)
+        mask = self.patch2img(mask)
+
+        return img, mask
+
+# Full MAE-ViT Model
+class MAE_ViT(torch.nn.Module):
+    def __init__(
+        self,
+        image_size=64,
+        patch_size=16,
+        emb_dim=256,
+        encoder_layer=12,
+        encoder_head=3,
+        decoder_layer=4,
+        decoder_head=3,
+        mask_ratio=0.75
+    ):
+        """
+        Args:
+            image_size (int): Size of input image.
+            patch_size (int): Size of each square patch.
+            emb_dim (int): Embedding dimension.
+            encoder_layer (int): Encoder transformer layers.
+            encoder_head (int): Attention heads in encoder.
+            decoder_layer (int): Decoder transformer layers.
+            decoder_head (int): Attention heads in decoder.
+            mask_ratio (float): Ratio of image patches to mask.
+        """
+        super().__init__()
+        self.encoder = MAE_Encoder(
+            image_size, patch_size, emb_dim,
+            encoder_layer, encoder_head, mask_ratio
+        )
+        self.decoder = MAE_Decoder(
+            image_size, patch_size, emb_dim,
+            decoder_layer, decoder_head
+        )
+
+    def forward(self, img):
+        features, backward_indexes = self.encoder(img)
+        predicted_img, mask = self.decoder(features, backward_indexes)
+        return predicted_img, mask
