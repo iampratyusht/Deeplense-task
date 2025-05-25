@@ -13,7 +13,7 @@ The model is implemented using **PyTorch**.
 The MAE paper is available at:
 [MAE paper](https://arxiv.org/abs/2111.06377)
 
-![MAE](./MAE.png)
+![MAE](./evaluations/MAE.png)
 
 
 ## Implementation Details
@@ -72,20 +72,20 @@ The MAE paper is available at:
 
 ## Visualization
 ### **Loss Curve for MAE**&#x20;
-![MAE](.evaluations/Epoch%20vs%20Training%20&%20validation%20Loss%20MAE.png)
+![MAE](./evaluations/Epoch%20vs%20Training%20&%20validation%20Loss%20MAE.png)
 
 ### **Reconstructed Images from MAE**&#x20;
-![MAE](.evaluations/Reconstructed%20images.png)
+![MAE](./evaluations/Reconstructed%20images.png)
 
 ### **Fine-tuning for Classification Phase Visualizations**
 - **Loss and Accuracy Curve**&#x20; 
-![MAE](.evaluations/Epoch%20vs%20Loss%20&%20Accuracy.png)
+![MAE](./evaluations/Epoch%20vs%20Loss%20&%20Accuracy.png)
 
 - **Confusion Matrix**&#x20;
-![MAE](.evaluations/cf%20matrix.png)
+![MAE](./evaluations/cf%20matrix.png)
 
 - **ROC Curve**&#x20;
-![MAE](.evaluations/ROC%20curve.png)
+![MAE](./evaluations/ROC%20curve.png)
 
 
 ## Conclusion
