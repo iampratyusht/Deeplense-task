@@ -82,24 +82,4 @@ def get_classifier_model(strategy: str, weight_path: str, device: str, num_class
     return model_cls
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Build ViT Classifier with MAE Encoder")
-    parser.add_argument("--strategy", type=str, choices=["frozen", "partial", "full"], required=True,
-                        help="Finetuning strategy: 'frozen', 'partial', or 'full'")
-    parser.add_argument("--weight_path", type=str, required=True, 
-                        help="Path to pre-trained MAE weight file (.pth)")
-    parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu",
-                        help="Computation device (default: auto detect cuda/cpu)")
-    parser.add_argument("--num_classes", type=int, default=3, 
-                        help="Number of output classes (default: 3)")
 
-    args = parser.parse_args()
-
-    model = get_classifier_model(
-        strategy=args.strategy,
-        weight_path=args.weight_path,
-        device=args.device,
-        num_classes=args.num_classes
-    )
-
-    print(f"Model created with strategy '{args.strategy}' on device '{args.device}'")
