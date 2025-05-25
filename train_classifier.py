@@ -4,8 +4,9 @@ import torch.optim as optim
 from tqdm import tqdm
 from data import train_dataset
 from evaluate import accuracy_fn
+from evaluate import ClassifierEvaluator
 from torch.utils.tensorboard import SummaryWriter
-from downstream_classifier import get_classifier_model
+from model import get_classifier_model
 import os
 import math
 import argparse
@@ -98,9 +99,18 @@ def train(model, args):
             best_val_acc = avg_val_acc
             print(f"Saving best model with acc {best_val_acc:.4f} at {epoch+1} epoch!")
             torch.save(model.state_dict(), args.model_weight_path)
+    evaluator = ClassifierEvaluator(
+        model=model,
+        test_loader=val_dataloader,
+        class_labels=["Class A", "Class B", "Class C"],
+        save_path=args.save_path  # e.g., "results/classifier_eval"
+    )
 
+    y_true, y_pred, y_probs = evaluator.compute_predictions(num_classes=3)
+    evaluator.plot_training_metrics(train_loss, test_loss, train_acc, test_acc, lr_history)
+    evaluator.plot_confusion_matrices(y_true, y_pred)
+    evaluator.plot_roc_curves(y_true, y_probs)
     writer.close()
-    return train_loss, test_loss, train_acc, test_acc, lr_history
 
 
 if __name__ == "__main__":
@@ -139,3 +149,5 @@ if __name__ == "__main__":
                                  num_classes=args.num_classes)
 
     train(model, args)
+
+    

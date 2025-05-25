@@ -31,11 +31,11 @@ After fine-tuning, the model achieves the following results on the validation se
 - **MSE**: `0.0003`
 - **SSIM**: `0.9549`
 - **PSNR**: `35.8112 dB`
-![Metrics Plot](./Epoch%20vs%20Loss,%20SSIM%20and%20PSNR.png)
+![Metrics Plot](.Evaluations/Epoch%20vs%20Loss,%20SSIM%20and%20PSNR.png)
 
 ## Results & Discussion
 - The model successfully reconstructs fine details in strong lensing images.
-![Upscaled Images](./Upscaled%20Images.png)
+![Upscaled Images](.Evaluations/Upscaled%20Images.png)
 - Model weights are saved as checkpoints named `SR_wt.pth`
 - Higher SSIM and PSNR indicate improved structural preservation and less noise.
 

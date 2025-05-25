@@ -1,10 +1,10 @@
 import torch
 import argparse
-from mae_vit import MAE_ViT, MAE_Encoder
+from vit.mae import MAE_ViT, MAE_Encoder
 from einops import rearrange
 
 
-class ViT_Classifier(torch.nn.Module):
+class MAE_Classifier(torch.nn.Module):
     def __init__(self, encoder: MAE_Encoder, num_classes=3) -> None:
         super().__init__()
         self.encoder = encoder
@@ -58,7 +58,7 @@ def get_classifier_model(strategy: str, weight_path: str, device: str, num_class
     )
     model_mae.load_state_dict(torch.load(weight_path, map_location=device), strict=False)
 
-    model_cls = ViT_Classifier(model_mae.encoder, num_classes=num_classes).to(device)
+    model_cls = MAE_Classifier(model_mae.encoder, num_classes=num_classes).to(device)
 
     # Strategy-based finetuning
     if strategy == "frozen":
