@@ -240,3 +240,70 @@ class ClassifierEvaluator:
         roc_plot = os.path.join(self.save_path, "roc_curves.png")
         plt.savefig(roc_plot)
         plt.close()
+
+def compute_psnr(img1, img2, max_value=1.0):
+    mse = np.mean((img1 - img2) ** 2)
+    if mse == 0:
+        return float('inf')  # Perfect match
+    psnr = 10 * np.log10((max_value ** 2) / mse)
+    return psnr
+
+class SREvaluator:
+    def __init__(self, model, dataset, device, save_dir):
+        self.model = model
+        self.dataset = dataset
+        self.device = device
+        self.save_dir = save_dir
+        os.makedirs(self.save_dir, exist_ok=True)
+
+    def compare_images(self, n=5):
+        self.model.eval()
+        indices = np.random.choice(len(self.dataset), n, replace=False)
+
+        for i, idx in enumerate(indices):
+            lr_img, hr_img = self.dataset[idx]
+            lr_img_tensor = lr_img.unsqueeze(0).to(self.device)
+            hr_img_np = hr_img.numpy()
+
+            with torch.no_grad():
+                sr_img = self.model(lr_img_tensor).cpu().numpy()[0, 0]
+
+            fig, axes = plt.subplots(1, 3, figsize=(12, 4))
+            axes[0].imshow(lr_img.cpu().numpy()[0, 0], cmap='gray')
+            axes[0].set_title("Low-Resolution Image")
+            axes[0].axis("off")
+
+            axes[1].imshow(sr_img, cmap='gray')
+            axes[1].set_title("Super-Resolved Image")
+            axes[1].axis("off")
+
+            axes[2].imshow(hr_img_np.squeeze(), cmap='gray')
+            axes[2].set_title("Ground Truth High-Resolution Image")
+            axes[2].axis("off")
+
+            plt.tight_layout()
+            save_path = os.path.join(self.save_dir, f"comparison_{i+1}.png")
+            plt.savefig(save_path)
+            plt.close(fig)
+
+    def plot_metrics(self, train_losses, val_losses, ssim_scores, psnr_scores):
+        epochs = range(1, len(train_losses) + 1)
+        fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+
+        axes[0].plot(epochs, train_losses, label="Train Loss")
+        axes[0].plot(epochs, val_losses, label="Val Loss")
+        axes[0].set_title("Loss Curve")
+        axes[0].legend()
+
+        axes[1].plot(epochs, ssim_scores, label="SSIM", color='orange')
+        axes[1].set_title("SSIM Curve")
+        axes[1].legend()
+
+        axes[2].plot(epochs, psnr_scores, label="PSNR", color='green')
+        axes[2].set_title("PSNR Curve")
+        axes[2].legend()
+
+        plt.tight_layout()
+        save_path = os.path.join(self.save_dir, "metrics_plot.png")
+        plt.savefig(save_path)
+        plt.close(fig)
