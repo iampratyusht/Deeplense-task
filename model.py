@@ -285,5 +285,66 @@ def get_classifier_model(strategy: str, weight_path: str, device: str, num_class
 
     return model_cls
 
+class UpsampleBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, scale_factor=2):
+        super(UpsampleBlock, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels * (scale_factor ** 2), kernel_size=3, padding=1)
+        self.pixel_shuffle = nn.PixelShuffle(scale_factor)
+        self.act = nn.ReLU()
 
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.pixel_shuffle(x)
+        return self.act(x)
+
+# Super-resolution model using pretrained MAE encoder
+class MAE_SR(nn.Module):
+    def __init__(
+        self, 
+        mae_encoder, 
+        input_dim=768, 
+        emb_dim=256, 
+        patch_size=16, 
+        num_layers=2, 
+        num_heads=8, 
+        num_upsample_blocks=3
+    ):
+        super().__init__() 
+        self.encoder = mae_encoder
+        self.cls_token = self.encoder.cls_token
+        self.pos_embedding = self.encoder.pos_embedding
+        self.patchify = self.encoder.patchify
+        self.transformer = self.encoder.transformer
+        self.layer_norm = self.encoder.layer_norm
+
+        # Project high-dimensional encoder output to fixed channel size
+        self.feature_proj = nn.Conv1d(input_dim, emb_dim, kernel_size=1)
+
+        # Stack of upsampling blocks
+        self.upsample_blocks = nn.Sequential(
+            *[UpsampleBlock(emb_dim, emb_dim) for _ in range(num_upsample_blocks)],
+            nn.Conv2d(emb_dim, 1, kernel_size=3, padding=1),  # Output 1-channel image
+            nn.Tanh()  # Normalize output between -1 and 1
+        )
+
+        # Optional resizing
+        self.interpolate = lambda x: F.interpolate(x, size=(150, 150), mode='bilinear', align_corners=False)
+
+    def forward(self, x):
+        patches = self.patchify(x)
+        patches = rearrange(patches, 'b c h w -> (h w) b c')        
+        patches = patches + self.pos_embedding
+        patches = torch.cat([self.cls_token.expand(-1, patches.shape[1], -1), patches], dim=0)        
+        patches = rearrange(patches, 't b c -> b t c')
+
+        features = self.layer_norm(self.transformer(patches))        
+        encoded_features = rearrange(features, 'b t c -> b c t')[:, :, 1:]  # Remove CLS token
+
+        encoded_features = self.feature_proj(encoded_features)  # Project to emb_dim channels
+        encoded_features = encoded_features.view(-1, emb_dim, 4, 4)  # Reshape to spatial 4x4
+
+        reconstructed_img = self.upsample_blocks(encoded_features)
+        reconstructed_img = self.interpolate(reconstructed_img)
+
+        return reconstructed_img
 
