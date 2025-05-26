@@ -105,14 +105,14 @@ python pretrain.py \
   --config config.yaml
 ```
 
-Train your super-resolution model with:
+Train your MAE classification model with:
 
 ```bash
 python train_classifier.py \
   --config config.yaml
 ```
 
-Train your super-resolution model with:
+Train your MAE super-resolution model with:
 
 ```bash
 python train_super_resolution.py \
